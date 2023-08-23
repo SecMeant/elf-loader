@@ -1,9 +1,12 @@
 #include <cstdio>
 #include <cstdlib>
+#include <cstdint>
+
+#include <mipc/file.h>
 
 #include <getopt.h>
 
-static const char * elffile;
+static const char * elfpath;
 
 int main(int argc, char **argv)
 {
@@ -26,7 +29,7 @@ int main(int argc, char **argv)
                 abort();
 
             case 'f':
-                elffile = optarg;
+                elfpath = optarg;
                 break;
 
             case '?':
@@ -38,10 +41,19 @@ int main(int argc, char **argv)
         }
     }
 
-    if (!elffile) {
+    if (!elfpath) {
         fprintf(stderr, "Elf file required\n");
         return 1;
     }
+
+    auto elffile = mipc::finbuf(elfpath);
+
+    if (!elffile) {
+        fprintf(stderr, "Failed to open file: %s\n", elfpath);
+        return 1;
+    }
+
+    printf("%s\n", elffile.data());
 
     return 0;
 }
