@@ -34,6 +34,34 @@ static constexpr unsigned ELFCLASSNONE = 0;
 static constexpr unsigned ELFCLASS32 = 1;
 static constexpr unsigned ELFCLASS64 = 2;
 
+static constexpr unsigned ET_NONE = 0;
+static constexpr unsigned ET_REL = 1;
+static constexpr unsigned ET_EXEC = 2;
+static constexpr unsigned ET_DYN = 3;
+static constexpr unsigned ET_CORE = 4;
+static constexpr unsigned ET_LOOS = 0xFE00;
+static constexpr unsigned ET_HIOS = 0xFEFF;
+static constexpr unsigned ET_LOPROC = 0xFF00;
+static constexpr unsigned ET_HIPROC = 0xFFFF;
+
+static constexpr unsigned PT_NULL = 0;
+static constexpr unsigned PT_LOAD = 1;
+static constexpr unsigned PT_DYNAMIC = 2;
+static constexpr unsigned PT_INTERP = 3;
+static constexpr unsigned PT_NOTE = 4;
+static constexpr unsigned PT_SHLIB = 5;
+static constexpr unsigned PT_PHDR = 6;
+static constexpr unsigned PT_LOOS = 0x60000000;
+static constexpr unsigned PT_HIOS = 0x6FFFFFFF;
+static constexpr unsigned PT_LOPROC = 0x70000000;
+static constexpr unsigned PT_HIPROC = 0x7FFFFFFF;
+
+static constexpr unsigned PF_X = 0x1;
+static constexpr unsigned PF_W = 0x2;
+static constexpr unsigned PF_R = 0x4;
+static constexpr unsigned PF_MASKOS = 0x00FF0000;
+static constexpr unsigned PF_MASKPROC = 0xFF000000;
+
 static constexpr unsigned SHF_WRITE = 0x1;
 static constexpr unsigned SHF_ALLOC = 0x2;
 static constexpr unsigned SHF_EXECINSTR = 0x4;
@@ -71,6 +99,17 @@ typedef struct {
     Elf64_Xword sh_addralign; /* Address alignment boundary */
     Elf64_Xword sh_entsize;   /* Size of entries, if section has table */
 } Elf64_Shdr;
+
+typedef struct {
+    Elf64_Word p_type;    /* Type of segment */
+    Elf64_Word p_flags;   /* Segment attributes */
+    Elf64_Off p_offset;   /* Offset in file */
+    Elf64_Addr p_vaddr;   /* Virtual address in memory */
+    Elf64_Addr p_paddr;   /* Reserved */
+    Elf64_Xword p_filesz; /* Size of segment in file */
+    Elf64_Xword p_memsz;  /* Size of segment in memory */
+    Elf64_Xword p_align;  /* Alignment of segment */
+} Elf64_Phdr;
 
 static constexpr Elf64_Word SHT_NULL     = 0;
 static constexpr Elf64_Word SHT_PROGBITS = 1;

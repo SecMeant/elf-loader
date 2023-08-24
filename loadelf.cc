@@ -1,3 +1,4 @@
+#include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>
@@ -32,6 +33,16 @@ struct {
      * parsing the ELF file.
      */
     unsigned dry_run : 1;
+
+    /* 
+     * If It's PIE, we have to pick base load address ourselves.
+     */
+    unsigned is_pie : 1;
+
+    /*
+     * Base virtual address of where the binary is loaded.
+     */
+    uintptr_t base_va;
 } options;
 
 static const char* strtab_get(Elf32_Word stroffset)
@@ -145,6 +156,111 @@ static int load_sections(
     return 0;
 }
 
+static constexpr bool is_page_aligned(uintptr_t p)
+{
+    return p % 4096 == 0;
+}
+
+static void* ptr_offset(void *p, size_t offset)
+{
+    return reinterpret_cast<char*>(p) + offset;
+}
+
+static int load_segment_(const mipc::finbuf &elffile, const Elf64_Phdr &phdr)
+{
+    printf(
+        "Loading segment from %zx:%zu to %p:%zu %c%c%c\n"
+        ,phdr.p_offset
+        ,phdr.p_filesz
+        ,reinterpret_cast<void*>(phdr.p_vaddr)
+        ,phdr.p_memsz
+        ,phdr.p_flags & PF_R ? 'R' : '-'
+        ,phdr.p_flags & PF_W ? 'W' : '-'
+        ,phdr.p_flags & PF_X ? 'X' : '-'
+    );
+
+    if (options.dry_run)
+        return 0;
+
+    if (options.is_pie && options.base_va == 0)
+        options.base_va = 0x7401000; // TODO: Randomize
+
+    void * const va_addr = ptr_offset(PAGE_ADDR(reinterpret_cast<void*>(phdr.p_vaddr)), options.base_va);
+    const size_t va_size = PAGE_ALIGN((phdr.p_vaddr + phdr.p_memsz) - (phdr.p_vaddr & (~0xfff)));
+
+    void * const pseg = mmap(
+        va_addr,
+        va_size,
+        PROT_READ | PROT_WRITE,
+        MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED,
+        -1,
+        0
+    );
+
+    if (pseg == MAP_FAILED) {
+        fprintf(stderr, "Failed to mmap segment\n");
+        return 1;
+    }
+
+    memcpy(reinterpret_cast<void*>(phdr.p_vaddr + options.base_va), elffile.begin() + phdr.p_offset, phdr.p_filesz);
+    const int prot = (phdr.p_flags & PF_R ? PROT_READ  : 0) |
+                     (phdr.p_flags & PF_W ? PROT_WRITE : 0) |
+                     (phdr.p_flags & PF_X ? PROT_EXEC  : 0);
+    mprotect(pseg, PAGE_ALIGN(phdr.p_memsz), prot);
+
+    return 0;
+}
+
+static int load_segment(const mipc::finbuf &elffile, const Elf64_Phdr &phdr)
+{
+    switch (phdr.p_type) {
+        case PT_LOAD:
+            return load_segment_(elffile, phdr);
+            break;
+
+        default:
+            return 0;
+    }
+
+    __builtin_unreachable();
+}
+
+static int load_segments(
+        const mipc::finbuf &elffile,
+        const Elf64_Off phoff,
+        const Elf64_Half phent_size,
+        const Elf64_Half phnum
+) {
+    for (auto i = 0u; i < phnum; ++i) {
+        const auto phdr = read_from<Elf64_Phdr>(elffile.begin() + phoff + i * phent_size);
+        printf(
+            "\tProgram header entry %u:\n"
+            "\t\t p_type: %u\n"
+            "\t\t p_flags: %u\n"
+            "\t\t p_offset: %zu\n"
+            "\t\t p_vaddr: %p\n"
+            "\t\t p_paddr: %p\n"
+            "\t\t p_filesz: %zu\n"
+            "\t\t p_memsz: %zu\n"
+            "\t\t p_align: %zu\n"
+            ,i
+            ,phdr.p_type
+            ,phdr.p_flags
+            ,phdr.p_offset
+            ,reinterpret_cast<void*>(phdr.p_vaddr)
+            ,reinterpret_cast<void*>(phdr.p_paddr)
+            ,phdr.p_filesz
+            ,phdr.p_memsz
+            ,phdr.p_align
+        );
+
+        if (load_segment(elffile, phdr))
+            return 1;
+    }
+
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static struct option long_options[] = {
@@ -216,6 +332,11 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    if (in_hdr.e_type == ET_DYN) {
+        options.is_pie = 1;
+        puts("Binary is PIE");
+    }
+
     /* TODO check other ELF header fields */
 
     printf("Program entry: %p\n", (void*) in_hdr.e_entry);
@@ -249,13 +370,14 @@ int main(int argc, char **argv)
     if (options.load_from_sections) {
         if (const auto ret = load_sections(elffile, shoff, shent_size, shnum); ret)
             return ret;
-    } else {
-        return 1;
+    } else { /* Load from program headers */
+        if (const auto ret = load_segments(elffile, phoff, phent_size, phnum); ret)
+            return ret;
     }
 
     if (!options.dry_run) {
         using elf_entry_func_t = void (*)();
-        auto entry = reinterpret_cast<elf_entry_func_t>(in_hdr.e_entry);
+        auto entry = reinterpret_cast<elf_entry_func_t>(in_hdr.e_entry + options.base_va);
         entry();
     }
 
