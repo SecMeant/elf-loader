@@ -22,7 +22,7 @@ static const char * strtab;
 static Elf64_Xword strtab_size;
 
 struct {
-    /* 
+    /*
      * If 0 (default), program is loaded by parsing program headers.
      * If 1, program is loaded by parsing section headers.
      */
@@ -34,7 +34,7 @@ struct {
      */
     unsigned dry_run : 1;
 
-    /* 
+    /*
      * If It's PIE, we have to pick base load address ourselves.
      */
     unsigned is_pie : 1;
@@ -69,47 +69,78 @@ void * PAGE_ADDR(void *p_)
 {
     uintptr_t p = reinterpret_cast<uintptr_t>(p_);
 
-    p &= ~(0xfff);
+    p &= ~(0xfffUL);
 
     return reinterpret_cast<void *>(p);
+}
+
+static constexpr bool is_page_aligned(uintptr_t p)
+{
+    return p % 4096 == 0;
+}
+
+static void* ptr_offset(void *p, size_t offset)
+{
+    return reinterpret_cast<char*>(p) + offset;
+}
+
+static int load_section_(const mipc::finbuf &elffile, const Elf64_Shdr &shdr)
+{
+    printf(
+        "Loading: %s at %p of size: %zu, perm: %c%c%c\n",
+        strtab_get(shdr.sh_name),
+        reinterpret_cast<void*>(shdr.sh_addr),
+        shdr.sh_size,
+        shdr.sh_flags & SHF_ALLOC ? 'R' : '-',
+        shdr.sh_flags & SHF_WRITE ? 'W' : '-',
+        shdr.sh_flags & SHF_EXECINSTR ? 'X' : '-'
+    );
+
+    if (options.dry_run)
+        return 0;
+
+    if (shdr.sh_size == 0)
+        return 0;
+
+    void * const va_addr = ptr_offset(PAGE_ADDR(reinterpret_cast<void*>(shdr.sh_addr)), options.base_va);
+    const size_t va_size = PAGE_ALIGN((shdr.sh_addr + shdr.sh_size) - (shdr.sh_addr & (~0xfffUL)));
+
+    /*
+     * First map the section as RW so we can memcpy the data.
+     * We will later mprotect to the requested prot.
+     */
+    void *p = mmap(
+        va_addr,
+        va_size,
+        PROT_READ | PROT_WRITE,
+        MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED,
+        -1,
+        0
+    );
+
+    if (p == MAP_FAILED) {
+        fprintf(stderr, "Failed to map section: %s\n", strtab_get(shdr.sh_name));
+        return 1;
+    }
+
+    memcpy(reinterpret_cast<void*>(shdr.sh_addr + options.base_va), elffile.begin() + shdr.sh_offset, shdr.sh_size);
+
+    const int prot = (shdr.sh_flags & SHF_ALLOC ? PROT_READ : 0)
+                   | (shdr.sh_flags & SHF_WRITE ? PROT_WRITE : 0)
+                   | (shdr.sh_flags & SHF_EXECINSTR ? PROT_EXEC: 0);
+    mprotect(va_addr, va_size, prot);
+
+    return 0;
 }
 
 static int load_section(const mipc::finbuf &elffile, const Elf64_Shdr &shdr)
 {
     switch (shdr.sh_type) {
-        case SHT_PROGBITS: {
-            printf(
-                "Loading: %s at %p of size: %zu, perm: %c%c%c\n",
-                strtab_get(shdr.sh_name),
-                reinterpret_cast<void*>(shdr.sh_addr),
-                shdr.sh_size,
-                shdr.sh_flags & SHF_ALLOC ? 'R' : '-',
-                shdr.sh_flags & SHF_WRITE ? 'W' : '-',
-                shdr.sh_flags & SHF_EXECINSTR ? 'X' : '-'
-            );
-
-            /* 
-             * First map the section as RW so we can memcpy the data.
-             * We will later mprotect to the requested prot.
-             */
-            void * const sec_va = reinterpret_cast<void *>(shdr.sh_addr);
-            void *p = mmap(PAGE_ADDR(sec_va), PAGE_ALIGN(shdr.sh_size), PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0);
-            if (p == MAP_FAILED) {
-                fprintf(stderr, "Failed to map section: %s\n", strtab_get(shdr.sh_name));
-                return 1;
-            }
-
-            memcpy(sec_va, elffile.begin() + shdr.sh_offset, shdr.sh_size);
-
-            const int prot = (shdr.sh_flags & SHF_ALLOC ? PROT_READ : 0)
-                           | (shdr.sh_flags & SHF_WRITE ? PROT_WRITE : 0)
-                           | (shdr.sh_flags & SHF_EXECINSTR ? PROT_EXEC: 0);
-            mprotect(PAGE_ADDR(sec_va), PAGE_ALIGN(shdr.sh_size), prot);
-
-           break;
-        }
+        case SHT_PROGBITS:
+            return load_section_(elffile, shdr);
+            break;
         default:
-           break;
+            break;
     }
 
     return 0;
@@ -148,22 +179,11 @@ static int load_sections(
             shdr.sh_entsize
         );
 
-        if (!options.dry_run)
-            if (load_section(elffile, shdr))
-                return 1;
+        if (load_section(elffile, shdr))
+            return 1;
     }
 
     return 0;
-}
-
-static constexpr bool is_page_aligned(uintptr_t p)
-{
-    return p % 4096 == 0;
-}
-
-static void* ptr_offset(void *p, size_t offset)
-{
-    return reinterpret_cast<char*>(p) + offset;
 }
 
 static int load_segment_(const mipc::finbuf &elffile, const Elf64_Phdr &phdr)
@@ -182,12 +202,16 @@ static int load_segment_(const mipc::finbuf &elffile, const Elf64_Phdr &phdr)
     if (options.dry_run)
         return 0;
 
-    if (options.is_pie && options.base_va == 0)
-        options.base_va = 0x7401000; // TODO: Randomize
+    if (phdr.p_memsz == 0)
+        return 0;
 
     void * const va_addr = ptr_offset(PAGE_ADDR(reinterpret_cast<void*>(phdr.p_vaddr)), options.base_va);
-    const size_t va_size = PAGE_ALIGN((phdr.p_vaddr + phdr.p_memsz) - (phdr.p_vaddr & (~0xfff)));
+    const size_t va_size = PAGE_ALIGN((phdr.p_vaddr + phdr.p_memsz) - (phdr.p_vaddr & (~0xfffUL)));
 
+    /*
+     * First map the section as RW so we can memcpy the data.
+     * We will later mprotect to the requested prot.
+     */
     void * const pseg = mmap(
         va_addr,
         va_size,
@@ -203,10 +227,11 @@ static int load_segment_(const mipc::finbuf &elffile, const Elf64_Phdr &phdr)
     }
 
     memcpy(reinterpret_cast<void*>(phdr.p_vaddr + options.base_va), elffile.begin() + phdr.p_offset, phdr.p_filesz);
+
     const int prot = (phdr.p_flags & PF_R ? PROT_READ  : 0) |
                      (phdr.p_flags & PF_W ? PROT_WRITE : 0) |
                      (phdr.p_flags & PF_X ? PROT_EXEC  : 0);
-    mprotect(pseg, PAGE_ALIGN(phdr.p_memsz), prot);
+    mprotect(pseg, va_size, prot);
 
     return 0;
 }
@@ -365,6 +390,9 @@ int main(int argc, char **argv)
         }
     }
 
+    if (options.is_pie && options.base_va == 0)
+        options.base_va = 0x7401000; // TODO: Randomize
+
     printf("Found %u sections at %zu\n", shnum, shoff);
 
     if (options.load_from_sections) {
@@ -375,6 +403,7 @@ int main(int argc, char **argv)
             return ret;
     }
 
+    printf("\nProgram loaded. Jumping to It's entry..\n=================================\n\n");
     if (!options.dry_run) {
         using elf_entry_func_t = void (*)();
         auto entry = reinterpret_cast<elf_entry_func_t>(in_hdr.e_entry + options.base_va);
