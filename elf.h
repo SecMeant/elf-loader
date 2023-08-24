@@ -34,6 +34,12 @@ static constexpr unsigned ELFCLASSNONE = 0;
 static constexpr unsigned ELFCLASS32 = 1;
 static constexpr unsigned ELFCLASS64 = 2;
 
+static constexpr unsigned SHF_WRITE = 0x1;
+static constexpr unsigned SHF_ALLOC = 0x2;
+static constexpr unsigned SHF_EXECINSTR = 0x4;
+static constexpr unsigned SHF_MASKOS = 0x0F000000;
+static constexpr unsigned SHF_MASKPROC = 0xF0000000;
+
 static constexpr unsigned short SHN_UNDEF = 0;
 
 typedef struct {
@@ -65,6 +71,23 @@ typedef struct {
     Elf64_Xword sh_addralign; /* Address alignment boundary */
     Elf64_Xword sh_entsize;   /* Size of entries, if section has table */
 } Elf64_Shdr;
+
+static constexpr Elf64_Word SHT_NULL     = 0;
+static constexpr Elf64_Word SHT_PROGBITS = 1;
+static constexpr Elf64_Word SHT_SYMTAB   = 2;
+static constexpr Elf64_Word SHT_STRTAB   = 3;
+static constexpr Elf64_Word SHT_RELA     = 4;
+static constexpr Elf64_Word SHT_HASH     = 5;
+static constexpr Elf64_Word SHT_DYNAMIC  = 6;
+static constexpr Elf64_Word SHT_NOTE     = 7;
+static constexpr Elf64_Word SHT_NOBITS   = 8;
+static constexpr Elf64_Word SHT_REL      = 9;
+static constexpr Elf64_Word SHT_SHLIB    = 10;
+static constexpr Elf64_Word SHT_DYNSYM   = 11;
+static constexpr Elf64_Word SHT_LOOS     = 0x60000000;
+static constexpr Elf64_Word SHT_HIOS     = 0x6FFFFFFF;
+static constexpr Elf64_Word SHT_LOPROC   = 0x70000000;
+static constexpr Elf64_Word SHT_HIPROC   = 0x7FFFFFFF;
 
 /*
 typedef struct {
