@@ -29,6 +29,6 @@ loadelf: loadelf.o
 	$(CXX) loadelf.o -o loadelf $(LINKDEPS) $(CXXFLAGS)
 
 clean:
-	rm -f main.o main loadelf .depend
+	rm -f main.o main main_pie loadelf.o loadelf .depend
 
 .PHONY: clean
