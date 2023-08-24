@@ -4,3 +4,4 @@ loadelf
 .cache/
 .depend
 loadelf.o
+main_pie
