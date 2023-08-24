@@ -20,6 +20,20 @@ static const char * elfpath;
 static const char * strtab;
 static Elf64_Xword strtab_size;
 
+struct {
+    /* 
+     * If 0 (default), program is loaded by parsing program headers.
+     * If 1, program is loaded by parsing section headers.
+     */
+    unsigned load_from_sections : 1;
+
+    /*
+     * Don't load the program into memory, but go trough the whole process of
+     * parsing the ELF file.
+     */
+    unsigned dry_run : 1;
+} options;
+
 static const char* strtab_get(Elf32_Word stroffset)
 {
     if (stroffset >= strtab_size)
@@ -90,17 +104,60 @@ static int load_section(const mipc::finbuf &elffile, const Elf64_Shdr &shdr)
     return 0;
 }
 
+static int load_sections(
+        const mipc::finbuf &elffile,
+        const Elf64_Off shoff,
+        const Elf64_Half shent_size,
+        const Elf64_Half shnum
+) {
+    for (auto i = 0u; i < shnum; ++i) {
+        const auto shdr = read_from<Elf64_Shdr>(elffile.begin() + shoff + i * shent_size);
+        printf(
+            "\tSection %u:\n"
+            "\t\t sh_name: %s\n"
+            "\t\t sh_type: %u\n"
+            "\t\t sh_flags: %zu\n"
+            "\t\t sh_addr: %p\n"
+            "\t\t sh_offset: %zu\n"
+            "\t\t sh_size: %zu\n"
+            "\t\t sh_link: %u\n"
+            "\t\t sh_info: %u\n"
+            "\t\t sh_addralign: %zu\n"
+            "\t\t sh_entsize: %zu\n",
+            i,
+            strtab_get(shdr.sh_name),
+            shdr.sh_type,
+            shdr.sh_flags,
+            reinterpret_cast<void*>(shdr.sh_addr),
+            shdr.sh_offset,
+            shdr.sh_size,
+            shdr.sh_link,
+            shdr.sh_info,
+            shdr.sh_addralign,
+            shdr.sh_entsize
+        );
+
+        if (!options.dry_run)
+            if (load_section(elffile, shdr))
+                return 1;
+    }
+
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     static struct option long_options[] = {
         { "file", required_argument, 0, 'f' },
+        { "load-from-sections", no_argument, 0, 's' },
+        { "dry-run", no_argument, 0, 'd' },
         { 0, 0, 0, 0 },
     };
 
     int option_index = 0;
 
     while (1) {
-        int c = getopt_long(argc, argv, "f:", long_options, &option_index);
+        int c = getopt_long(argc, argv, "dsf:", long_options, &option_index);
 
         if (c == -1)
             break;
@@ -112,6 +169,14 @@ int main(int argc, char **argv)
 
             case 'f':
                 elfpath = optarg;
+                break;
+
+            case 's':
+                options.load_from_sections = 1;
+                break;
+
+            case 'd':
+                options.dry_run = 1;
                 break;
 
             case '?':
@@ -181,40 +246,18 @@ int main(int argc, char **argv)
 
     printf("Found %u sections at %zu\n", shnum, shoff);
 
-    for (auto i = 0u; i < shnum; ++i) {
-        const auto shdr = read_from<Elf64_Shdr>(elffile.begin() + shoff + i * shent_size);
-        printf(
-            "\tSection %u:\n"
-            "\t\t sh_name: %s\n"
-            "\t\t sh_type: %u\n"
-            "\t\t sh_flags: %zu\n"
-            "\t\t sh_addr: %p\n"
-            "\t\t sh_offset: %zu\n"
-            "\t\t sh_size: %zu\n"
-            "\t\t sh_link: %u\n"
-            "\t\t sh_info: %u\n"
-            "\t\t sh_addralign: %zu\n"
-            "\t\t sh_entsize: %zu\n",
-            i,
-            strtab_get(shdr.sh_name),
-            shdr.sh_type,
-            shdr.sh_flags,
-            reinterpret_cast<void*>(shdr.sh_addr),
-            shdr.sh_offset,
-            shdr.sh_size,
-            shdr.sh_link,
-            shdr.sh_info,
-            shdr.sh_addralign,
-            shdr.sh_entsize
-        );
-
-        if (load_section(elffile, shdr))
-            return 1;
+    if (options.load_from_sections) {
+        if (const auto ret = load_sections(elffile, shoff, shent_size, shnum); ret)
+            return ret;
+    } else {
+        return 1;
     }
 
-    using elf_entry_func_t = void (*)();
-    auto entry = reinterpret_cast<elf_entry_func_t>(in_hdr.e_entry);
-    entry();
+    if (!options.dry_run) {
+        using elf_entry_func_t = void (*)();
+        auto entry = reinterpret_cast<elf_entry_func_t>(in_hdr.e_entry);
+        entry();
+    }
 
     return 0;
 }
