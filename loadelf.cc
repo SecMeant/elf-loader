@@ -292,13 +292,14 @@ int main(int argc, char **argv)
         { "file", required_argument, 0, 'f' },
         { "load-from-sections", no_argument, 0, 's' },
         { "dry-run", no_argument, 0, 'd' },
+        { "base", required_argument, 0, 'b' },
         { 0, 0, 0, 0 },
     };
 
     int option_index = 0;
 
     while (1) {
-        int c = getopt_long(argc, argv, "dsf:", long_options, &option_index);
+        int c = getopt_long(argc, argv, "dsf:b:", long_options, &option_index);
 
         if (c == -1)
             break;
@@ -319,6 +320,19 @@ int main(int argc, char **argv)
             case 'd':
                 options.dry_run = 1;
                 break;
+
+            case 'b': {
+                char *parse_end;
+                const unsigned long base_va = strtoul(optarg, &parse_end, 0);
+
+                if (*parse_end != '\0') {
+                    fprintf(stderr, "Bad argument given as --base/-b: %s\n", optarg);
+                    return 1;
+                }
+
+                options.base_va = base_va;
+                break;
+            }
 
             case '?':
                 /* getopt_long already printed an error message. */
