@@ -188,12 +188,15 @@ static int load_sections(
 
 static int load_segment_(const mipc::finbuf &elffile, const Elf64_Phdr &phdr)
 {
+    void * const va_addr = ptr_offset(PAGE_ADDR(reinterpret_cast<void*>(phdr.p_vaddr)), options.base_va);
+    const size_t va_size = PAGE_ALIGN((phdr.p_vaddr + phdr.p_memsz) - (phdr.p_vaddr & (~0xfffUL)));
+
     printf(
         "Loading segment from %zx:%zu to %p:%zu %c%c%c\n"
         ,phdr.p_offset
         ,phdr.p_filesz
-        ,reinterpret_cast<void*>(phdr.p_vaddr)
-        ,phdr.p_memsz
+        ,va_addr
+        ,va_size
         ,phdr.p_flags & PF_R ? 'R' : '-'
         ,phdr.p_flags & PF_W ? 'W' : '-'
         ,phdr.p_flags & PF_X ? 'X' : '-'
@@ -204,9 +207,6 @@ static int load_segment_(const mipc::finbuf &elffile, const Elf64_Phdr &phdr)
 
     if (phdr.p_memsz == 0)
         return 0;
-
-    void * const va_addr = ptr_offset(PAGE_ADDR(reinterpret_cast<void*>(phdr.p_vaddr)), options.base_va);
-    const size_t va_size = PAGE_ALIGN((phdr.p_vaddr + phdr.p_memsz) - (phdr.p_vaddr & (~0xfffUL)));
 
     /*
      * First map the section as RW so we can memcpy the data.
