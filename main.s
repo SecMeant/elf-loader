@@ -6,6 +6,7 @@ format_str: db "%d\n", 0
     SECTION .data
 data_size: dd 5
 data: dd 1, 2, 3, -6, 4
+func_tab: dq print_int
 
     SECTION .text
 _start:
