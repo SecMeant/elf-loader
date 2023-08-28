@@ -111,6 +111,50 @@ typedef struct {
     Elf64_Xword p_align;  /* Alignment of segment */
 } Elf64_Phdr;
 
+typedef struct {
+    Elf64_Sxword d_tag;
+
+    union {
+      Elf64_Xword d_val;
+      Elf64_Addr d_ptr;
+    } d_un;
+
+} Elf64_Dyn;
+
+static constexpr Elf64_Sxword DT_NULL         = 0;
+static constexpr Elf64_Sxword DT_NEEDED       = 1;
+static constexpr Elf64_Sxword DT_PLTRELSZ     = 2;
+static constexpr Elf64_Sxword DT_PLTGOT       = 3;
+static constexpr Elf64_Sxword DT_HASH         = 4;
+static constexpr Elf64_Sxword DT_STRTAB       = 5;
+static constexpr Elf64_Sxword DT_SYMTAB       = 6;
+static constexpr Elf64_Sxword DT_RELA         = 7;
+static constexpr Elf64_Sxword DT_RELASZ       = 8;
+static constexpr Elf64_Sxword DT_RELAENT      = 9;
+static constexpr Elf64_Sxword DT_STRSZ        = 10;
+static constexpr Elf64_Sxword DT_SYMENT       = 11;
+static constexpr Elf64_Sxword DT_INIT         = 12;
+static constexpr Elf64_Sxword DT_FINI         = 13;
+static constexpr Elf64_Sxword DT_SONAME       = 14;
+static constexpr Elf64_Sxword DT_RPATH        = 15;
+static constexpr Elf64_Sxword DT_SYMBOLIC     = 16;
+static constexpr Elf64_Sxword DT_REL          = 17;
+static constexpr Elf64_Sxword DT_RELSZ        = 18;
+static constexpr Elf64_Sxword DT_RELENT       = 19;
+static constexpr Elf64_Sxword DT_PLTREL       = 20;
+static constexpr Elf64_Sxword DT_DEBUG        = 21;
+static constexpr Elf64_Sxword DT_TEXTREL      = 22;
+static constexpr Elf64_Sxword DT_JMPREL       = 23;
+static constexpr Elf64_Sxword DT_BIND_NOW     = 24;
+static constexpr Elf64_Sxword DT_INIT_ARRAY   = 25;
+static constexpr Elf64_Sxword DT_FINI_ARRAY   = 26;
+static constexpr Elf64_Sxword DT_INIT_ARRAYSZ = 27;
+static constexpr Elf64_Sxword DT_FINI_ARRAYSZ = 28;
+static constexpr Elf64_Sxword DT_LOOS         = 0x60000000;
+static constexpr Elf64_Sxword DT_HIOS         = 0x6FFFFFFF;
+static constexpr Elf64_Sxword DT_LOPROC       = 0x70000000;
+static constexpr Elf64_Sxword DT_HIPROC       = 0x7FFFFFFF;
+
 static constexpr Elf64_Word SHT_NULL     = 0;
 static constexpr Elf64_Word SHT_PROGBITS = 1;
 static constexpr Elf64_Word SHT_SYMTAB   = 2;

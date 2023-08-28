@@ -236,12 +236,56 @@ static int load_segment_(const mipc::finbuf &elffile, const Elf64_Phdr &phdr)
     return 0;
 }
 
+static int parse_dynamic_entry(const mipc::finbuf &elffile, const Elf64_Dyn &dentry)
+{
+    switch (dentry.d_tag) {
+        case DT_RELA:
+            puts("DT_RELA");
+            rela = dentry.d_ptr;
+            return 0;
+
+        case DT_REL:
+            puts("DT_REL");
+            return 0;
+
+        default:
+            return 0;
+    }
+
+    __builtin_unreachable();
+}
+
+static int parse_dynamic(const mipc::finbuf &elffile, const Elf64_Phdr &phdr)
+{
+    const auto *dentry_begin =
+        reinterpret_cast<const Elf64_Dyn *>(elffile.begin() + phdr.p_offset);
+
+    const auto *const dentry_end =
+        reinterpret_cast<const Elf64_Dyn *>(
+                elffile.begin() + phdr.p_offset + phdr.p_filesz);
+
+    assert(phdr.p_filesz % sizeof(Elf64_Dyn) == 0);
+
+    while (dentry_begin < dentry_end) {
+
+        if (int status = parse_dynamic_entry(elffile, *dentry_begin); status)
+            return status;
+
+        ++dentry_begin;
+    }
+
+    return 0;
+}
+
 static int load_segment(const mipc::finbuf &elffile, const Elf64_Phdr &phdr)
 {
     switch (phdr.p_type) {
         case PT_LOAD:
             return load_segment_(elffile, phdr);
-            break;
+
+        case PT_DYNAMIC:
+            puts("Found dynamic section");
+            return parse_dynamic(elffile, phdr);
 
         default:
             return 0;
